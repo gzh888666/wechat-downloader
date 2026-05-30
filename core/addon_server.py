@@ -2,6 +2,7 @@
 mitmproxy 插件服务器
 这个文件会被 mitmdump 加载
 """
+
 import os
 from pathlib import Path
 from queue import Queue
@@ -23,32 +24,32 @@ downloaded_urls = set()
 def create_progress_callback():
     """进度回调"""
     import time
-    
-    state = {
-        'last_progress': 0,
-        'last_time': time.time(),
-        'last_percent': -1
-    }
-    
+
+    state = {"last_progress": 0, "last_time": time.time(), "last_percent": -1}
+
     def progress_callback(downloaded, total):
         if total > 0:
             percent = int(downloaded * 100 / total)
             percent_tier = percent // 10
-            
-            if percent_tier > state['last_percent']:
+
+            if percent_tier > state["last_percent"]:
                 current_time = time.time()
-                elapsed = current_time - state['last_time']
+                elapsed = current_time - state["last_time"]
                 if elapsed > 0:
-                    speed = (downloaded - state['last_progress']) / elapsed
+                    speed = (downloaded - state["last_progress"]) / elapsed
                     speed_str = format_size(int(speed)) + "/s"
-                    logger.info(f"{percent}% ({format_size(int(downloaded))}/{format_size(int(total))}) {speed_str}")
+                    logger.info(
+                        f"{percent}% ({format_size(int(downloaded))}/{format_size(int(total))}) {speed_str}"
+                    )
                 else:
-                    logger.info(f"{percent}% ({format_size(int(downloaded))}/{format_size(int(total))})")
-                
-                state['last_progress'] = downloaded
-                state['last_time'] = current_time
-                state['last_percent'] = percent_tier
-    
+                    logger.info(
+                        f"{percent}% ({format_size(int(downloaded))}/{format_size(int(total))})"
+                    )
+
+                state["last_progress"] = downloaded
+                state["last_time"] = current_time
+                state["last_percent"] = percent_tier
+
     return progress_callback
 
 
@@ -58,31 +59,31 @@ def download_worker():
         item = download_queue.get()
         if item is None:
             break
-        
+
         video_data: VideoData = item
         url = video_data.url
-        
+
         filename = generate_filename(
-            video_data.description,
-            video_data.url,
-            video_data.suffix
+            video_data.description, video_data.url, video_data.suffix
         )
         filepath = Path(os.path.join(config.download_dir, filename))
-        
+
         counter = 1
         while filepath.exists():
-            filepath = Path(os.path.join(config.download_dir, f"{filepath.stem}_{counter}{video_data.suffix}"))
+            filepath = Path(
+                os.path.join(
+                    config.download_dir, f"{filepath.stem}_{counter}{video_data.suffix}"
+                )
+            )
             counter += 1
-        
+
         logger.info(f"⬇️{filepath.name} 下载中...")
-        
+
         progress_callback = create_progress_callback()
 
         if is_m3u8_url(url):
             downloader = M3U8Downloader(
-                m3u8_url=url,
-                save_path=str(filepath),
-                headers={}
+                m3u8_url=url, save_path=str(filepath), headers={}
             )
             success = downloader.download()
         else:
@@ -90,14 +91,14 @@ def download_worker():
                 url=url,
                 save_path=str(filepath),
                 thread_count=4,
-                progress_callback=progress_callback
+                progress_callback=progress_callback,
             )
             success = downloader.start()
-        
+
         try:
             if success:
                 actual_file = filepath
-                if hasattr(downloader, 'save_path'):
+                if hasattr(downloader, "save_path"):
                     actual_file = Path(downloader.save_path)
 
                 if video_data.is_encrypted:
@@ -105,14 +106,16 @@ def download_worker():
                     if decrypt_wechat_video(str(actual_file), video_data.decode_key):
                         logger.success(f"✅{actual_file.name} 下载完成")
                     else:
-                        raise DecryptError(f"[Crawler-Retry] 解密失败: {actual_file.name}")
+                        raise DecryptError(
+                            f"[Crawler-Retry] 解密失败: {actual_file.name}"
+                        )
                 else:
                     logger.success(f"✅{actual_file.name} 下载完成")
             else:
                 if url in downloaded_urls:
                     downloaded_urls.discard(url)
 
-                temp_file = str(filepath) + '.tmp'
+                temp_file = str(filepath) + ".tmp"
                 if os.path.exists(temp_file):
                     os.remove(temp_file)
                 raise DownloadError(f"[Crawler-Retry] {url}视频下载失败")
@@ -124,12 +127,12 @@ def download_worker():
             download_queue.task_done()
 
 
-def on_video_found(video_info: dict) -> None:
+def on_video_found(video_info: dict, source_url: str = "") -> None:
     """视频发现回调"""
     video_data = extract_video_url(video_info)
     if not video_data:
         return
-    
+
     url = video_data.url
     if url in downloaded_urls:
         return
@@ -143,15 +146,10 @@ def on_video_found(video_info: dict) -> None:
     download_queue.put(video_data)
 
 
-addon_instance = WechatVideoAddon(
-    video_callback=on_video_found,
-    version="1.0.0"
-)
+addon_instance = WechatVideoAddon(video_callback=on_video_found, version="1.0.0")
 
 download_thread = Thread(target=download_worker, daemon=True)
 download_thread.start()
 
 
-addons = [
-    addon_instance
-]
+addons = [addon_instance]
