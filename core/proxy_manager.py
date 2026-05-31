@@ -264,6 +264,7 @@ def is_cert_trusted() -> bool:
                 capture_output=True,
                 text=True,
                 timeout=5,
+                creationflags=0x08000000,
             )
             if "mitmproxy" in result.stdout:
                 return True
@@ -272,6 +273,7 @@ def is_cert_trusted() -> bool:
                 capture_output=True,
                 text=True,
                 timeout=5,
+                creationflags=0x08000000,
             )
             if "mitmproxy" in result.stdout:
                 return True

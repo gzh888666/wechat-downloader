@@ -16,6 +16,14 @@
 
 ## 📋 更新日志
 
+### v0.3.2
+- 📦 **PyInstaller打包**：支持打包为exe+venv分发包
+- 🖥️ **消除黑框**：所有subprocess调用添加CREATE_NO_WINDOW标志
+- 🐛 **修复打包后路径**：sys._MEIPASS定位源文件，修复__file__路径
+- 🐛 **修复windowed模式日志**：sys.stderr为None时跳过控制台sink
+- 📂 **默认保存到系统视频目录**：UI初始化为Videos/WeChatDownloader
+- 🔧 **一键打包脚本**：build.bat + _pack.py
+
 ### v0.3.1
 - 🚀 **先加载UI再初始化**：启动时立即显示窗口，状态栏显示初始化进度
 - 🔧 **修复状态栏不可见**：调整布局顺序，状态栏固定在底部

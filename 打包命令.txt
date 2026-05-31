@@ -1,1 +1,0 @@
-uv run pyinstaller --onefile --windowed --name WxDown --icon=WxDown.ico main.py

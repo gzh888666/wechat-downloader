@@ -1,6 +1,6 @@
 [project]
 name = "wechat-downloader"
-version = "0.3.1"
+version = "0.3.2"
 description = "WeChat video downloader"
 requires-python = ">=3.10,<3.11"
 dependencies = [

@@ -480,14 +480,14 @@ def main():
         try:
             app.root.after(0, lambda: app.status_var.set("⏳ 清理端口占用..."))
             result = subprocess.run(
-                f'netstat -ano | findstr ":{port}.*LISTEN"',
+                ["netstat", "-ano"],
                 capture_output=True,
                 text=True,
-                shell=True,
                 timeout=5,
+                creationflags=0x08000000,
             )
-            if result.stdout.strip():
-                for line in result.stdout.strip().split("\n"):
+            for line in result.stdout.split("\n"):
+                if f":{port}" in line and "LISTEN" in line:
                     parts = line.strip().split()
                     if parts:
                         pid = parts[-1]
@@ -496,9 +496,9 @@ def main():
                                 f"⚠️端口 {port} 被进程 {pid} 占用，正在清理..."
                             )
                             subprocess.run(
-                                f"taskkill /PID {pid} /F",
+                                ["taskkill", "/PID", pid, "/F"],
                                 capture_output=True,
-                                shell=True,
+                                creationflags=0x08000000,
                             )
                             time.sleep(0.5)
                             logger.success(f"✅已清理占用端口的进程 {pid}")
@@ -509,10 +509,40 @@ def main():
         env["SAVE_DIR"] = str(save_dir)
         env["PORT"] = str(port)
 
+        import shutil
+
+        mitmdump_path = shutil.which("mitmdump")
+        if not mitmdump_path:
+            venv_mitmdump = Path(sys.executable).parent / "mitmdump.exe"
+            if venv_mitmdump.exists():
+                mitmdump_path = str(venv_mitmdump)
+            else:
+                local_mitmdump = (
+                    Path(sys.executable).parent / "Scripts" / "mitmdump.exe"
+                )
+                if local_mitmdump.exists():
+                    mitmdump_path = str(local_mitmdump)
+        if not mitmdump_path:
+            exe_dir = Path(sys.executable).parent
+            for candidate in [
+                exe_dir / ".venv" / "Scripts" / "mitmdump.exe",
+                exe_dir.parent / ".venv" / "Scripts" / "mitmdump.exe",
+                Path.cwd() / ".venv" / "Scripts" / "mitmdump.exe",
+            ]:
+                if candidate.exists():
+                    mitmdump_path = str(candidate)
+                    break
+        if not mitmdump_path:
+            mitmdump_path = "mitmdump"
+
         addon_script = Path(__file__).parent / "core" / "addon_server.py"
+        if not addon_script.exists():
+            addon_script = Path(sys.executable).parent / "core" / "addon_server.py"
+        if not addon_script.exists():
+            addon_script = Path.cwd() / "core" / "addon_server.py"
 
         cmd = [
-            "mitmdump",
+            mitmdump_path,
             "-s",
             str(addon_script),
             "-p",
@@ -528,7 +558,7 @@ def main():
         try:
             app.root.after(0, lambda: app.status_var.set("⏳ 启动代理服务器..."))
             logger.info("🚀启动代理服务器...")
-            process = subprocess.Popen(cmd, env=env)
+            process = subprocess.Popen(cmd, env=env, creationflags=0x08000000)
             app.process = process
 
             time.sleep(1)
