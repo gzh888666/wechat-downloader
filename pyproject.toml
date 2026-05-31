@@ -1,6 +1,6 @@
 [project]
 name = "wechat-downloader"
-version = "0.3.0"
+version = "0.3.1"
 description = "WeChat video downloader"
 requires-python = ">=3.10,<3.11"
 dependencies = [
@@ -19,4 +19,6 @@ build-backend = "hatchling.build"
 packages = ["core", "crypto", "downloaders", "models", "utils"]
 
 [dependency-groups]
-dev = []
+dev = [
+    "pyinstaller>=6.20.0",
+]

@@ -1,6 +1,7 @@
 """
 统一日志配置模块
 """
+
 import os
 import sys
 from datetime import datetime
@@ -32,23 +33,24 @@ class LoggerManager:
         os.makedirs(log_dir, exist_ok=True)
         logger.remove()
 
-        logger.add(
-            sink=sys.stderr,
-            format="<green>{time:HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <level>{message}</level>",
-            level="INFO",
-            colorize=True,
-            enqueue=False
-        )
+        if sys.stderr is not None:
+            logger.add(
+                sink=sys.stderr,
+                format="<green>{time:HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <level>{message}</level>",
+                level="INFO",
+                colorize=True,
+                enqueue=False,
+            )
 
         current_date = datetime.now().strftime("%Y-%m-%d")
-        
+
         logger.add(
             sink=os.path.join(log_dir, f"{current_date}.log"),
             format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {name}:{function}:{line} - {message}",
             level="DEBUG",
             retention="7 days",
             encoding="utf-8",
-            enqueue=True
+            enqueue=True,
         )
 
     @staticmethod
@@ -57,4 +59,4 @@ class LoggerManager:
 
 
 logger_manager = LoggerManager()
-__all__ = ['LoggerManager', 'logger_manager', 'logger']
+__all__ = ["LoggerManager", "logger_manager", "logger"]

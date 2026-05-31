@@ -61,18 +61,18 @@ def entry_to_video_data(entry):
 
 
 class AppUI:
-    def __init__(self, save_dir: str, port: int, process: subprocess.Popen):
+    def __init__(self, save_dir: str, port: int):
         import tkinter as tk
         from tkinter import ttk
 
-        self.process = process
+        self.process = None
         self.save_dir = save_dir
         self.video_items = []
         self.download_callbacks = {}
         self.download_queue = Queue()
 
         self.root = tk.Tk()
-        self.root.title("微信视频号下载器")
+        self.root.title("风雪微信视频号下载器 v1.0.0      by: Snow")
         self.root.geometry("1110x740")
         self.root.minsize(800, 500)
 
@@ -142,6 +142,20 @@ class AppUI:
         self.tree.column("title", width=680, anchor="w")
         self.tree.column("size", width=120, anchor="center")
         self.tree.column("status", width=150, anchor="center")
+
+        self.status_var = tk.StringVar(value="⏳ 初始化中...")
+        bottom_frame = tk.Frame(self.root)
+        bottom_frame.pack(fill=tk.X, side=tk.BOTTOM, padx=10, pady=(0, 10))
+        status_bar = tk.Label(
+            bottom_frame,
+            textvariable=self.status_var,
+            anchor="w",
+            relief=tk.SUNKEN,
+            fg="gray",
+            font=("Microsoft YaHei", 11),
+        )
+        status_bar.pack(fill=tk.X, ipady=3)
+
         self.tree.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
 
         style = ttk.Style()
@@ -164,17 +178,6 @@ class AppUI:
 
         scrollbar = ttk.Scrollbar(self.tree, orient="vertical", command=self.tree.yview)
         self.tree.configure(yscrollcommand=scrollbar.set)
-
-        self.status_var = tk.StringVar(value="就绪 - 打开微信访问视频号即可嗅探视频")
-        status_bar = tk.Label(
-            self.root,
-            textvariable=self.status_var,
-            anchor="w",
-            relief=tk.SUNKEN,
-            fg="gray",
-            font=("Microsoft YaHei", 11),
-        )
-        status_bar.pack(fill=tk.X, padx=10, pady=(0, 10), ipady=3)
 
         self.tree.bind("<Double-1>", self._on_double_click)
 
@@ -446,158 +449,185 @@ def main():
 
     args = parser.parse_args()
 
-    save_dir = Path(args.dir).absolute()
-    save_dir.mkdir(exist_ok=True)
+    if args.dir == config.download_dir:
+        try:
+            import ctypes
+
+            buf = ctypes.create_unicode_buffer(512)
+            ctypes.windll.shell32.SHGetFolderPathW(0, 14, 0, 0, buf)
+            save_dir = Path(buf.value) / "WeChatDownloader"
+        except Exception:
+            save_dir = Path(config.download_dir)
+    else:
+        save_dir = Path(args.dir).absolute()
+    save_dir.mkdir(parents=True, exist_ok=True)
     port = args.port
 
-    logger.info("")
-    logger.info("=" * 70)
-    logger.info("  🎬微信视频号自动嗅探下载器")
-    logger.info(f"  📁保存目录: {save_dir}")
-    logger.info(f"  🌐代理端口: {port}")
-    logger.info("=" * 70)
-    logger.info("")
+    app = AppUI(str(save_dir), port)
+    app.status_var.set("⏳ 初始化中...")
 
-    try:
-        result = subprocess.run(
-            f'netstat -ano | findstr ":{port}.*LISTEN"',
-            capture_output=True,
-            text=True,
-            shell=True,
-            timeout=5,
-        )
-        if result.stdout.strip():
-            for line in result.stdout.strip().split("\n"):
-                parts = line.strip().split()
-                if parts:
-                    pid = parts[-1]
-                    if pid.isdigit():
-                        logger.warning(f"⚠️端口 {port} 被进程 {pid} 占用，正在清理...")
-                        subprocess.run(
-                            f"taskkill /PID {pid} /F", capture_output=True, shell=True
-                        )
-                        time.sleep(0.5)
-                        logger.success(f"✅已清理占用端口的进程 {pid}")
-    except Exception:
-        pass
+    def do_init():
+        global proxy_manager
 
-    env = os.environ.copy()
-    env["SAVE_DIR"] = str(save_dir)
-    env["PORT"] = str(port)
+        logger.info("")
+        logger.info("=" * 70)
+        logger.info("  🎬微信视频号自动嗅探下载器")
+        logger.info(f"  📁保存目录: {save_dir}")
+        logger.info(f"  🌐代理端口: {port}")
+        logger.info("=" * 70)
+        logger.info("")
 
-    addon_script = Path(__file__).parent / "core" / "addon_server.py"
+        try:
+            app.root.after(0, lambda: app.status_var.set("⏳ 清理端口占用..."))
+            result = subprocess.run(
+                f'netstat -ano | findstr ":{port}.*LISTEN"',
+                capture_output=True,
+                text=True,
+                shell=True,
+                timeout=5,
+            )
+            if result.stdout.strip():
+                for line in result.stdout.strip().split("\n"):
+                    parts = line.strip().split()
+                    if parts:
+                        pid = parts[-1]
+                        if pid.isdigit():
+                            logger.warning(
+                                f"⚠️端口 {port} 被进程 {pid} 占用，正在清理..."
+                            )
+                            subprocess.run(
+                                f"taskkill /PID {pid} /F",
+                                capture_output=True,
+                                shell=True,
+                            )
+                            time.sleep(0.5)
+                            logger.success(f"✅已清理占用端口的进程 {pid}")
+        except Exception:
+            pass
 
-    cmd = [
-        "mitmdump",
-        "-s",
-        str(addon_script),
-        "-p",
-        str(port),
-        "--set",
-        "block_global=false",
-        "--set",
-        "stream_large_bodies=5m",
-        "--ssl-insecure",
-        "--quiet",
-    ]
+        env = os.environ.copy()
+        env["SAVE_DIR"] = str(save_dir)
+        env["PORT"] = str(port)
 
-    process = None
+        addon_script = Path(__file__).parent / "core" / "addon_server.py"
 
-    try:
-        logger.info("🚀启动代理服务器...")
-        process = subprocess.Popen(cmd, env=env)
+        cmd = [
+            "mitmdump",
+            "-s",
+            str(addon_script),
+            "-p",
+            str(port),
+            "--set",
+            "block_global=false",
+            "--set",
+            "stream_large_bodies=5m",
+            "--ssl-insecure",
+            "--quiet",
+        ]
 
-        time.sleep(1)
+        try:
+            app.root.after(0, lambda: app.status_var.set("⏳ 启动代理服务器..."))
+            logger.info("🚀启动代理服务器...")
+            process = subprocess.Popen(cmd, env=env)
+            app.process = process
 
-        if not check_certificate():
-            logger.warning("⚠️无法连接到代理，可能需要安装证书")
+            time.sleep(1)
 
-        from core.proxy_manager import is_cert_trusted
+            app.root.after(0, lambda: app.status_var.set("⏳ 检查证书..."))
+            if not check_certificate():
+                logger.warning("⚠️无法连接到代理，可能需要安装证书")
 
-        if not is_cert_trusted():
-            logger.warning("⚠️mitmproxy 证书未安装到系统信任存储")
-            logger.info("   证书未安装时设置系统代理会导致断网，请先安装证书")
-            ensure_certificate()
-            logger.info("")
-            logger.info("⏳等待证书安装完成...")
-            for i in range(30):
-                time.sleep(1)
-                if is_cert_trusted():
-                    logger.success("✅检测到证书已安装到系统信任存储")
-                    break
+            from core.proxy_manager import is_cert_trusted
+
+            if not is_cert_trusted():
+                app.root.after(0, lambda: app.status_var.set("⏳ 等待证书安装..."))
+                logger.warning("⚠️mitmproxy 证书未安装到系统信任存储")
+                logger.info("   证书未安装时设置系统代理会导致断网，请先安装证书")
+                ensure_certificate()
+                logger.info("")
+                logger.info("⏳等待证书安装完成...")
+                for i in range(30):
+                    time.sleep(1)
+                    if is_cert_trusted():
+                        logger.success("✅检测到证书已安装到系统信任存储")
+                        break
+                else:
+                    logger.warning("⚠️等待超时，请确认证书已正确安装")
+                    logger.info("   如果已安装，请重新运行程序")
+
+            if not args.no_auto_proxy:
+                app.root.after(0, lambda: app.status_var.set("⏳ 设置系统代理..."))
+                proxy_manager = ProxyManager("127.0.0.1", port)
+
+                if proxy_manager.setup():
+                    atexit.register(cleanup_proxy)
+                else:
+                    logger.warning("⚠️自动设置代理失败，请手动设置")
+                    logger.warning(f"代理地址: 127.0.0.1:{port}")
+                    proxy_manager = None
             else:
-                logger.warning("⚠️等待超时，请确认证书已正确安装")
-                logger.info("   如果已安装，请重新运行程序")
+                logger.info(f"⚠️请手动设置系统代理: 127.0.0.1:{port}")
 
-        if not args.no_auto_proxy:
-            proxy_manager = ProxyManager("127.0.0.1", port)
+            _ipc_dir.mkdir(exist_ok=True)
 
-            if proxy_manager.setup():
-                atexit.register(cleanup_proxy)
-            else:
-                logger.warning("⚠️自动设置代理失败，请手动设置")
-                logger.warning(f"代理地址: 127.0.0.1:{port}")
-                proxy_manager = None
-        else:
-            logger.info(f"⚠️请手动设置系统代理: 127.0.0.1:{port}")
+            app.root.after(
+                0, lambda: app.status_var.set("就绪 - 打开微信访问视频号即可嗅探视频")
+            )
 
-        _ipc_dir.mkdir(exist_ok=True)
+            seen_urls = set()
 
-        app = AppUI(str(save_dir), port, process)
-
-        seen_urls = set()
-
-        def poll_ipc():
-            while True:
-                if process.poll() is not None:
-                    try:
-                        app.root.destroy()
-                    except Exception:
-                        pass
-                    break
-
-                entries = read_ipc_videos()
-                for entry in entries:
-                    url = entry.get("url", "")
-                    if url and url not in seen_urls:
-                        seen_urls.add(url)
-                        video_data = entry_to_video_data(entry)
-                        logger.info(
-                            f"[UI] 新视频加入列表: {video_data.display_name[:40]}"
-                        )
+            def poll_ipc():
+                while True:
+                    if process.poll() is not None:
                         try:
-                            app.root.after(0, lambda vd=video_data: app.add_video(vd))
+                            app.root.destroy()
                         except Exception:
                             pass
-
-                time.sleep(0.5)
-
-        threading.Thread(target=poll_ipc, daemon=True).start()
-
-        def poll_download():
-            while True:
-                try:
-                    video_data, item_id = app.download_queue.get(timeout=0.5)
-                except Empty:
-                    if process.poll() is not None:
                         break
-                    continue
-                do_download(video_data, item_id, app)
 
-        threading.Thread(target=poll_download, daemon=True).start()
+                    entries = read_ipc_videos()
+                    for entry in entries:
+                        url = entry.get("url", "")
+                        if url and url not in seen_urls:
+                            seen_urls.add(url)
+                            video_data = entry_to_video_data(entry)
+                            logger.info(
+                                f"[UI] 新视频加入列表: {video_data.display_name[:40]}"
+                            )
+                            try:
+                                app.root.after(
+                                    0, lambda vd=video_data: app.add_video(vd)
+                                )
+                            except Exception:
+                                pass
 
-        app.run()
+                    time.sleep(0.5)
 
-    except FileNotFoundError:
-        logger.error("❌找不到 mitmdump 命令")
-        sys.exit(1)
+            threading.Thread(target=poll_ipc, daemon=True).start()
 
-    except Exception as e:
-        logger.error(f"❌错误: {e}")
-        sys.exit(1)
+            def poll_download():
+                while True:
+                    try:
+                        video_data, item_id = app.download_queue.get(timeout=0.5)
+                    except Empty:
+                        if process.poll() is not None:
+                            break
+                        continue
+                    do_download(video_data, item_id, app)
 
-    finally:
-        cleanup_proxy()
+            threading.Thread(target=poll_download, daemon=True).start()
+
+        except FileNotFoundError:
+            logger.error("❌找不到 mitmdump 命令")
+            app.root.after(0, lambda: app.status_var.set("❌ 找不到 mitmdump 命令"))
+
+        except Exception as e:
+            logger.error(f"❌错误: {e}")
+            app.root.after(0, lambda: app.status_var.set(f"❌ 初始化失败: {e}"))
+
+    threading.Thread(target=do_init, daemon=True).start()
+    app.run()
+    cleanup_proxy()
 
 
 if __name__ == "__main__":
