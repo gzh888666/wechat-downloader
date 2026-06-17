@@ -181,6 +181,7 @@ class AppUI:
 
         self.tree.bind("<Double-1>", self._on_double_click)
 
+        self._closing = False
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
     def add_video(self, video_data):
@@ -331,6 +332,7 @@ class AppUI:
             self.status_var.set("请手动关闭系统代理设置")
 
     def _on_close(self):
+        self._closing = True
         if self.process and self.process.poll() is None:
             self.process.terminate()
             try:
@@ -339,6 +341,14 @@ class AppUI:
                 self.process.kill()
         cleanup_proxy()
         self.root.destroy()
+
+    def safe_after(self, callback):
+        if self._closing:
+            return
+        try:
+            self.root.after(0, callback)
+        except Exception:
+            pass
 
     def run(self):
         self.root.mainloop()
@@ -390,7 +400,7 @@ def do_download(video_data, item_id, app):
                 if decrypt_wechat_video(str(actual_file), video_data.decode_key):
                     logger.success(f"✅{actual_file.name} 下载完成")
                     try:
-                        app.root.after(0, lambda: app.mark_done(item_id))
+                        app.safe_after(lambda: app.mark_done(item_id))
                     except Exception:
                         pass
                 else:
@@ -398,7 +408,7 @@ def do_download(video_data, item_id, app):
             else:
                 logger.success(f"✅{actual_file.name} 下载完成")
                 try:
-                    app.root.after(0, lambda: app.mark_done(item_id))
+                    app.safe_after(lambda: app.mark_done(item_id))
                 except Exception:
                     pass
         else:
@@ -409,13 +419,13 @@ def do_download(video_data, item_id, app):
     except (DecryptError, DownloadError) as e:
         logger.error(e)
         try:
-            app.root.after(0, lambda: app.mark_failed(item_id))
+            app.safe_after(lambda: app.mark_failed(item_id))
         except Exception:
             pass
     except Exception as e:
         logger.error(str(e), exc_info=True)
         try:
-            app.root.after(0, lambda: app.mark_failed(item_id))
+            app.safe_after(lambda: app.mark_failed(item_id))
         except Exception:
             pass
 
@@ -478,7 +488,7 @@ def main():
         logger.info("")
 
         try:
-            app.root.after(0, lambda: app.status_var.set("⏳ 清理端口占用..."))
+            app.safe_after(lambda: app.status_var.set("⏳ 清理端口占用..."))
             result = subprocess.run(
                 ["netstat", "-ano"],
                 capture_output=True,
@@ -556,21 +566,21 @@ def main():
         ]
 
         try:
-            app.root.after(0, lambda: app.status_var.set("⏳ 启动代理服务器..."))
+            app.safe_after(lambda: app.status_var.set("⏳ 启动代理服务器..."))
             logger.info("🚀启动代理服务器...")
             process = subprocess.Popen(cmd, env=env, creationflags=0x08000000)
             app.process = process
 
-            time.sleep(1)
+            time.sleep(2)
 
-            app.root.after(0, lambda: app.status_var.set("⏳ 检查证书..."))
+            app.safe_after(lambda: app.status_var.set("⏳ 检查证书..."))
             if not check_certificate():
                 logger.warning("⚠️无法连接到代理，可能需要安装证书")
 
             from core.proxy_manager import is_cert_trusted
 
             if not is_cert_trusted():
-                app.root.after(0, lambda: app.status_var.set("⏳ 等待证书安装..."))
+                app.safe_after(lambda: app.status_var.set("⏳ 等待证书安装..."))
                 logger.warning("⚠️mitmproxy 证书未安装到系统信任存储")
                 logger.info("   证书未安装时设置系统代理会导致断网，请先安装证书")
                 ensure_certificate()
@@ -578,6 +588,8 @@ def main():
                 logger.info("⏳等待证书安装完成...")
                 for i in range(30):
                     time.sleep(1)
+                    if app._closing or process.poll() is not None:
+                        return
                     if is_cert_trusted():
                         logger.success("✅检测到证书已安装到系统信任存储")
                         break
@@ -586,7 +598,9 @@ def main():
                     logger.info("   如果已安装，请重新运行程序")
 
             if not args.no_auto_proxy:
-                app.root.after(0, lambda: app.status_var.set("⏳ 设置系统代理..."))
+                if app._closing or process.poll() is not None:
+                    return
+                app.safe_after(lambda: app.status_var.set("⏳ 设置系统代理..."))
                 proxy_manager = ProxyManager("127.0.0.1", port)
 
                 if proxy_manager.setup():
@@ -600,8 +614,8 @@ def main():
 
             _ipc_dir.mkdir(exist_ok=True)
 
-            app.root.after(
-                0, lambda: app.status_var.set("就绪 - 打开微信访问视频号即可嗅探视频")
+            app.safe_after(
+                lambda: app.status_var.set("就绪 - 打开微信访问视频号即可嗅探视频")
             )
 
             seen_urls = set()
@@ -610,7 +624,7 @@ def main():
                 while True:
                     if process.poll() is not None:
                         try:
-                            app.root.destroy()
+                            app.root.after(0, app._on_close)
                         except Exception:
                             pass
                         break
@@ -625,9 +639,7 @@ def main():
                                 f"[UI] 新视频加入列表: {video_data.display_name[:40]}"
                             )
                             try:
-                                app.root.after(
-                                    0, lambda vd=video_data: app.add_video(vd)
-                                )
+                                app.safe_after(lambda vd=video_data: app.add_video(vd))
                             except Exception:
                                 pass
 
@@ -649,11 +661,11 @@ def main():
 
         except FileNotFoundError:
             logger.error("❌找不到 mitmdump 命令")
-            app.root.after(0, lambda: app.status_var.set("❌ 找不到 mitmdump 命令"))
+            app.safe_after(lambda: app.status_var.set("❌ 找不到 mitmdump 命令"))
 
         except Exception as e:
             logger.error(f"❌错误: {e}")
-            app.root.after(0, lambda: app.status_var.set(f"❌ 初始化失败: {e}"))
+            app.safe_after(lambda: app.status_var.set(f"❌ 初始化失败: {e}"))
 
     threading.Thread(target=do_init, daemon=True).start()
     app.run()

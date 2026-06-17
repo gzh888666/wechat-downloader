@@ -8,6 +8,14 @@ import sys
 
 base = os.path.dirname(os.path.abspath(__file__))
 
+venv_python = os.path.join(base, ".venv", "Scripts", "python.exe")
+if not os.path.exists(venv_python):
+    venv_python = os.path.join(base, ".venv", "bin", "python")
+if not os.path.exists(venv_python):
+    venv_python = sys.executable
+
+print(f"使用 Python: {venv_python}")
+
 print("[1/5] 清理旧文件...")
 for d in ["build", "dist"]:
     p = os.path.join(base, d)
@@ -22,7 +30,7 @@ print("清理完成")
 print("\n[2/5] PyInstaller 打包...")
 subprocess.run(
     [
-        sys.executable,
+        venv_python,
         "-m",
         "PyInstaller",
         "--windowed",
@@ -73,9 +81,9 @@ print(f"WxDown.zip: {size_mb:.2f} MB")
 
 print("\n[5/5] 清理临时文件...")
 shutil.rmtree(os.path.join(base, "build"), ignore_errors=True)
-os.remove(os.path.join(base, "WxDown.spec")) if os.path.exists(
-    os.path.join(base, "WxDown.spec")
-) else None
+spec_file = os.path.join(base, "WxDown.spec")
+if os.path.exists(spec_file):
+    os.remove(spec_file)
 
 print("\n========================================")
 print("  打包完成！输出: dist/WxDown.zip")
